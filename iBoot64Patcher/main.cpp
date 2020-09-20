@@ -1,11 +1,3 @@
-//
-//  main.cpp
-//  iBoot64Patcher
-//
-//  Created by tihmstar on 27.09.19.
-//  Copyright © 2019 tihmstar. All rights reserved.
-//
-
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>
@@ -18,18 +10,26 @@ using namespace tihmstar::offsetfinder64;
 
 #define FLAG_UNLOCK_NVRAM (1 << 0)
 
+#define FLAG_RA1NRA1N_PATCH (1 << 0)
+
+#define FLAG_RX_RW_PATCH (1 << 0)
+
 int main(int argc, const char * argv[]) {
     FILE* fp = NULL;
     char* cmd_handler_str = NULL;
     char* custom_boot_args = NULL;
     uint64_t cmd_handler_ptr = 0;
-    int flags = 0;
+    int N_flags = 0;
+    int R_flags = 0;
+    int RX_flags = 0;
     
     if(argc < 3) {
         printf("Usage: %s <iboot_in> <iboot_out> [args]\n", argv[0]);
         printf("\t-b <str>\tApply custom boot args.\n");
         printf("\t-c <cmd> <ptr>\tChange a command handler's pointer (hex).\n");
         printf("\t-n \t\tApply unlock nvram patch.\n");
+        printf("\t-r \t\tApply ra1nra1n patch.\n");
+        printf("\t-rx \t\tSets iBoot block writeable at 0x2000000 and loadaddr block executable at 0x4000000\n");
         return -1;
     }
     
@@ -39,10 +39,14 @@ int main(int argc, const char * argv[]) {
         if(HAS_ARG("-b", 1)) {
             custom_boot_args = (char*) argv[i+1];
         } else if(HAS_ARG("-n", 0)) {
-            flags |= FLAG_UNLOCK_NVRAM;
-        }else if(HAS_ARG("-c", 2)) {
+            N_flags |= FLAG_UNLOCK_NVRAM;
+        } else if(HAS_ARG("-c", 2)) {
             cmd_handler_str = (char*) argv[i+1];
             sscanf((char*) argv[i+2], "0x%016llX", &cmd_handler_ptr);
+        } else if(HAS_ARG("-r",0)) {
+            R_flags |= FLAG_RA1NRA1N_PATCH;
+        } else if(HAS_ARG("-rx",0)){
+            RX_flags |= FLAG_RX_RW_PATCH;
         }
     }
     
@@ -59,11 +63,19 @@ int main(int argc, const char * argv[]) {
                 patches.insert(patches.begin(), p.begin(), p.end());
             } catch (tihmstar::exception &e) {
                 printf("%s: Error doing patch_boot_args()!\n", __FUNCTION__);
-                return -1;
             }
         }
         
-        
+        if (R_flags & FLAG_RA1NRA1N_PATCH) {
+            try {
+                printf("getting get_ra1nra1n_patch() patch\n");
+                auto p = ibp->get_ra1nra1n_patch();
+                patches.insert(patches.begin(), p.begin(), p.end());
+            } catch (...) {
+                printf("%s: Error doing get_ra1nra1n_patch()!");
+            }
+        }
+
         /* Only bootloaders with the kernel load routines pass the DeviceTree. */
         try {
             printf("getting get_debug_enabled_patch() patch\n");
@@ -71,7 +83,6 @@ int main(int argc, const char * argv[]) {
             patches.insert(patches.begin(), p.begin(), p.end());
         } catch (...) {
             printf("%s: Error doing patch_debug_enabled()!\n", __FUNCTION__);
-            return -1;
         }
     }
     
@@ -84,18 +95,26 @@ int main(int argc, const char * argv[]) {
                 patches.insert(patches.begin(), p.begin(), p.end());
             } catch (...) {
                 printf("%s: Error doing patch_cmd_handler()!\n", __FUNCTION__);
-                return -1;
             }
         }
         
-        if (flags & FLAG_UNLOCK_NVRAM) {
+        if (N_flags & FLAG_UNLOCK_NVRAM) {
             try {
                 printf("getting get_unlock_nvram_patch() patch\n");
                 auto p = ibp->get_unlock_nvram_patch();
                 patches.insert(patches.begin(), p.begin(), p.end());
             } catch (...) {
                 printf("%s: Error doing get_unlock_nvram_patch()!\n", __FUNCTION__);
-                return -1;
+            }
+        }
+
+        if (RX_flags & FLAG_RX_RW_PATCH) {
+            try {
+                printf("getting add_rw_and_rx_mappings_el1() patch\n");
+                auto p = ibp->get_rw_and_x_mappings_patch_el1();
+                patches.insert(patches.begin(), p.begin(), p.end());
+            } catch (...) {
+                printf("%s: Error add_rw_and_rx_mappings_el1()!\n", __FUNCTION__);
             }
         }
     }
